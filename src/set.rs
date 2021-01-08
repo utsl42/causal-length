@@ -3,9 +3,11 @@ use std::cmp::{max, Ord};
 use std::collections::HashMap;
 use std::hash::Hash;
 
+/// Causal Length Set
+///
 /// Set implements the set described in the paper, with the addition of a tag. Set only uses the
 /// tag for garbage collection of old removed members.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Set<T, Tag, CL>
 where
     T: Eq + Hash + Clone,
@@ -22,13 +24,15 @@ where
     Tag: Ord + Copy,
     CL: CausalLength,
 {
-    fn new() -> Set<T, Tag, CL> {
+    /// Create a new empty `Set`
+    pub fn new() -> Set<T, Tag, CL> {
         Set {
             map: HashMap::new(),
         }
     }
 
-    fn get(&self, member: &T) -> Option<Tag> {
+    /// Returns `None` if `member` is not present in the set. If present returns `Some(Tag)`
+    pub fn get(&self, member: &T) -> Option<Tag> {
         if let Some(e) = self.map.get(member).to_owned() {
             if e.1.is_odd() {
                 return Some(e.0);
@@ -37,11 +41,13 @@ where
         None
     }
 
-    fn contains(&self, member: &T) -> bool {
+    /// Returns true if the set contains a value.
+    pub fn contains(&self, member: &T) -> bool {
         self.get(member).is_some()
     }
 
-    fn add(&mut self, member: T, tag: Tag) {
+    /// Add a value to a set.
+    pub fn add(&mut self, member: T, tag: Tag) {
         let one: CL = CL::one();
         let mut e = self.map.entry(member).or_insert((tag, one));
         // s{e |-> s(e)+1} if even
@@ -53,7 +59,8 @@ where
         e.0 = max(e.0, tag);
     }
 
-    fn remove(&mut self, member: T, tag: Tag) {
+    /// Removes a value from the set.
+    pub fn remove(&mut self, member: T, tag: Tag) {
         self.map.entry(member).and_modify(|e| {
             // {} if even(s(e))
             // { e |-> s(e) + 1 } if odd(s(e))
@@ -65,18 +72,23 @@ where
         // ignore attempts to remove items that aren't present...
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&T, Tag)> + '_ {
+    /// An iterator visiting all elements and tags in arbitrary order.
+    pub fn iter(&self) -> impl Iterator<Item = (&T, Tag)> + '_ {
         self.map
             .iter()
             .filter(|(_k, v)| v.1.is_odd())
             .map(|(k, v)| (k, v.0))
     }
 
-    fn delta_iter(&self) -> impl Iterator<Item = (&T, Tag, CL)> + '_ {
+    /// An iterator visiting all delta tuples in arbitrary order.
+    pub fn delta_iter(&self) -> impl Iterator<Item = (&T, Tag, CL)> + '_ {
         self.map.iter().map(|(k, v)| (k, v.0, v.1))
     }
 
-    fn merge_delta(&mut self, delta: (&T, Tag, CL), min_tag: Tag) {
+    /// Merge a delta tuple into a map.
+    ///
+    /// Remove deltas with a tag value less than `min_tag` will be ignored.
+    pub fn merge_delta(&mut self, delta: (&T, Tag, CL), min_tag: Tag) {
         if delta.2.is_even() && delta.1 < min_tag {
             // ignore excessively old remove records
             return;
@@ -92,13 +104,19 @@ where
             .or_insert((delta.1, delta.2));
     }
 
-    fn merge(&mut self, other: &Self, min_tag: Tag) {
+    /// Merge two sets.
+    ///
+    /// Remove deltas with a tag value less than `min_tag` will be ignored.
+    pub fn merge(&mut self, other: &Self, min_tag: Tag) {
         for delta in other.delta_iter() {
             self.merge_delta(delta, min_tag);
         }
     }
 
-    fn retain(&mut self, min_tag: Tag) {
+    /// Filter out old remove tombstone deltas from the set.
+    ///
+    /// Remove deltas with a tag value less than `min_tag` will be removed.
+    pub fn retain(&mut self, min_tag: Tag) {
         self.map
             .retain(|_k, (tag, length)| length.is_odd() || min_tag < *tag);
     }

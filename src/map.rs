@@ -3,9 +3,13 @@ use std::cmp::{max, Ord};
 use std::collections::HashMap;
 use std::hash::Hash;
 
+/// Causal Length Map
+///
+/// A CRDT map based on an adaptation of the causal length set.
+///
 /// The Map uses the tag for garbage collection of old removed members, and to
-/// resolve conflicting values for the same key.
-#[derive(Clone, Debug)]
+/// resolve conflicting values for the same key and causal length.
+#[derive(Clone, Debug, Default)]
 pub struct Map<K, V, Tag, CL>
 where
     K: Eq + Hash + Clone,
@@ -23,13 +27,15 @@ where
     Tag: Ord + Copy,
     CL: CausalLength,
 {
-    fn new() -> Map<K, V, Tag, CL> {
+    /// Create an empty `Map`
+    pub fn new() -> Map<K, V, Tag, CL> {
         Map {
             map: HashMap::new(),
         }
     }
 
-    fn get(&self, key: &K) -> Option<(&V, Tag)> {
+    /// Returns a reference to the value and tag corresponding to the key.
+    pub fn get(&self, key: &K) -> Option<(&V, Tag)> {
         if let Some(e) = self.map.get(key).to_owned() {
             if e.2.is_odd() {
                 return Some((&e.0, e.1));
@@ -38,7 +44,8 @@ where
         None
     }
 
-    fn contains(&self, key: &K) -> bool {
+    /// Returns true if the map contains a value for the specified key.
+    pub fn contains(&self, key: &K) -> bool {
         self.get(key).is_some()
     }
 
@@ -48,7 +55,7 @@ where
     ///
     /// If the map did have this key present, the value is updated, and the old
     /// value is returned, along with the old tag.
-    fn insert(&mut self, key: K, value: V, tag: Tag) -> Option<(V, Tag)> {
+    pub fn insert(&mut self, key: K, value: V, tag: Tag) -> Option<(V, Tag)> {
         let one: CL = CL::one();
         let e = self.map.entry(key);
         match e {
@@ -79,7 +86,7 @@ where
 
     /// Remove a key from the map, returning the stored value and tag if
     /// the key was in the map.
-    fn remove(&mut self, key: K, tag: Tag) -> Option<(V, Tag)> {
+    pub fn remove(&mut self, key: K, tag: Tag) -> Option<(V, Tag)> {
         let e = self.map.entry(key);
         match e {
             std::collections::hash_map::Entry::Occupied(mut oe) => {
@@ -100,18 +107,23 @@ where
         // ignore attempts to remove items that aren't present...
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&K, &V, Tag)> + '_ {
+    /// An iterator visiting all key, value, tag tuples in arbitrary order.
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V, Tag)> + '_ {
         self.map
             .iter()
             .filter(|(_k, v)| v.2.is_odd())
             .map(|(k, v)| (k, &v.0, v.1))
     }
 
-    fn delta_iter(&self) -> impl Iterator<Item = (&K, &V, Tag, CL)> + '_ {
+    /// An iterator visiting all delta tuples in arbitrary order.
+    pub fn delta_iter(&self) -> impl Iterator<Item = (&K, &V, Tag, CL)> + '_ {
         self.map.iter().map(|(k, v)| (k, &v.0, v.1, v.2))
     }
 
-    fn merge_delta(&mut self, delta: (&K, &V, Tag, CL), min_tag: Tag) {
+    /// Merge a delta tuple into a map.
+    ///
+    /// Remove deltas with a tag value less than `min_tag` will be ignored.
+    pub fn merge_delta(&mut self, delta: (&K, &V, Tag, CL), min_tag: Tag) {
         let (key, value, tag, length) = delta;
 
         if length.is_even() && tag < min_tag {
@@ -131,13 +143,19 @@ where
             .or_insert((value.clone(), tag, length));
     }
 
-    fn merge(&mut self, other: &Self, min_tag: Tag) {
+    /// Merge two maps.
+    ///
+    /// Remove deltas with a tag value less than `min_tag` will be ignored.
+    pub fn merge(&mut self, other: &Self, min_tag: Tag) {
         for delta in other.delta_iter() {
             self.merge_delta(delta, min_tag);
         }
     }
 
-    fn retain(&mut self, min_tag: Tag) {
+    /// Filter out old remove tombstone deltas from the map.
+    ///
+    /// Remove deltas with a tag value less than `min_tag` will be removed.
+    pub fn retain(&mut self, min_tag: Tag) {
         self.map
             .retain(|_k, (_v, tag, length)| length.is_odd() || min_tag < *tag);
     }

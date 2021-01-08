@@ -7,8 +7,11 @@
 use num_integer::Integer;
 use num_traits::One;
 
+/// Causal length Map
 pub mod map;
+/// Causal length Set
 pub mod set;
 
+/// CausalLength is abstracted to allow any of Rust's integer types to be used.
 pub trait CausalLength: Integer + One + Ord + Copy {}
 impl<T> CausalLength for T where T: Integer + One + Ord + Copy {}
