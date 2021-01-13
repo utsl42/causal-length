@@ -6,12 +6,31 @@
 
 use num_integer::Integer;
 use num_traits::One;
+use std::hash::Hash;
 
 /// Causal length Map
 pub mod map;
+pub use self::map::*;
+/// Causal length Register
+pub mod register;
+pub use self::register::*;
+
 /// Causal length Set
 pub mod set;
+pub use self::set::*;
 
 /// CausalLength is abstracted to allow any of Rust's integer types to be used.
 pub trait CausalLength: Integer + One + Ord + Copy {}
 impl<T> CausalLength for T where T: Integer + One + Ord + Copy {}
+
+/// Key type used in the CRDTs
+pub trait Key: Eq + Hash + Clone {}
+impl<T> Key for T where T: Eq + Hash + Clone {}
+
+/// Value type used in the CRDTs
+pub trait Value: Clone + Eq {}
+impl<T> Value for T where T: Clone + Eq {}
+
+/// Tag type used in the CRDTs
+pub trait TagT: Ord + Copy {}
+impl<T> TagT for T where T: Ord + Copy {}
