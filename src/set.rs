@@ -154,9 +154,9 @@ where
 mod serialization {
     use super::*;
     use serde::de::{SeqAccess, Visitor};
-    use serde::export::Formatter;
     use serde::ser::SerializeSeq;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::fmt::Formatter;
     use std::marker::PhantomData;
 
     impl<T, Tag, CL> Serialize for Set<T, Tag, CL>

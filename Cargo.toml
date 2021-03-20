@@ -1,9 +1,13 @@
 [package]
 name = "causal-length"
 version = "0.2.0"
+repository = "https://github.com/utsl42/causal-length"
+description = "CRDT's based on causal length sets"
 authors = ["Nathan Hawkins <utsl@utsl.org>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
+categories = ["data-structures"]
+keywords = ["crdt", "distributed-systems", "data-structures"]
 
 [features]
 default = ["serialization"]
