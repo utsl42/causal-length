@@ -20,8 +20,8 @@ pub mod set;
 pub use self::set::*;
 
 /// CausalLength is abstracted to allow any of Rust's integer types to be used.
-pub trait CausalLength: Integer + One + Ord + Copy {}
-impl<T> CausalLength for T where T: Integer + One + Ord + Copy {}
+pub trait CausalLength: Integer + One + Ord + Copy + Eq {}
+impl<T> CausalLength for T where T: Integer + One + Ord + Copy + Eq {}
 
 /// Key type used in the CRDTs
 pub trait Key: Eq + Hash + Clone {}
@@ -32,5 +32,5 @@ pub trait Value: Clone + Eq {}
 impl<T> Value for T where T: Clone + Eq {}
 
 /// Tag type used in the CRDTs
-pub trait TagT: Ord + Copy {}
-impl<T> TagT for T where T: Ord + Copy {}
+pub trait TagT: Eq + Ord + Copy + Default {}
+impl<T> TagT for T where T: Eq + Ord + Copy + Default {}

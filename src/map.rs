@@ -10,11 +10,11 @@ use std::collections::HashMap;
 ///
 /// `Map` uses the tag for garbage collection of old removed members, and to
 /// resolve conflicting values for the same key and causal length.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Map<K, V, Tag, CL>
 where
-    K: Key,
-    V: Value + Hash,
+    K: Key + Ord,
+    V: Value + Hash + Eq + Ord,
     Tag: TagT,
     CL: CausalLength,
 {
@@ -23,8 +23,8 @@ where
 
 impl<K, V, Tag, CL> Map<K, V, Tag, CL>
 where
-    K: Key,
-    V: Value + Hash,
+    K: Key + Ord,
+    V: Value + Hash + Eq + Ord,
     Tag: TagT,
     CL: CausalLength,
 {
@@ -133,27 +133,20 @@ where
     ///
     /// Remove deltas with a tag value less than `min_tag` will be ignored.
     pub fn merge_register(&mut self, delta: Register<(K, V), Tag, CL>, min_tag: Tag) {
-        let Register {
-            item: (key, value),
-            tag,
-            length,
-        } = delta;
         if delta.length.is_even() && delta.tag < min_tag {
             // ignore excessively old remove records
             return;
         }
-        match self.map.entry(key) {
+
+        match self.map.entry(delta.item.0.clone()) {
             Entry::Occupied(mut e) => {
                 let e = e.get_mut();
-                if length > e.length && tag > e.tag {
-                    e.item = value;
-                }
-                // (s⊔s′)(e) = max(s(e),s′(e))
-                e.tag = max(e.tag, tag);
-                e.length = max(e.length, length);
+
+                let reg = Register::make(delta.item.1.clone(), delta.tag, delta.length);
+                e.merge(&reg);
             }
             Entry::Vacant(e) => {
-                e.insert(Register::make(value, tag, length));
+                e.insert(Register::make(delta.item.1, delta.tag, delta.length));
             }
         }
     }
@@ -187,8 +180,8 @@ mod serialization {
 
     impl<K, V, Tag, CL> Serialize for Map<K, V, Tag, CL>
     where
-        K: Key + Serialize,
-        V: Value + Hash + Serialize,
+        K: Key + Ord + Serialize,
+        V: Value + Hash + Ord + Serialize,
         Tag: TagT + Serialize,
         CL: CausalLength + Serialize,
     {
@@ -213,8 +206,8 @@ mod serialization {
 
     impl<'de, K, V, Tag, CL> Visitor<'de> for DeltaVisitor<K, V, Tag, CL>
     where
-        K: Key + Deserialize<'de>,
-        V: Value + Hash + Deserialize<'de>,
+        K: Key + Ord + Deserialize<'de>,
+        V: Value + Hash + Ord + Deserialize<'de>,
         Tag: TagT + Deserialize<'de>,
         CL: CausalLength + Deserialize<'de>,
     {
@@ -239,8 +232,8 @@ mod serialization {
 
     impl<'de, K, V, Tag, CL> Deserialize<'de> for Map<K, V, Tag, CL>
     where
-        K: Key + Deserialize<'de>,
-        V: Value + Hash + Deserialize<'de>,
+        K: Key + Ord + Deserialize<'de>,
+        V: Value + Hash + Ord + Deserialize<'de>,
         Tag: TagT + Deserialize<'de>,
         CL: CausalLength + Deserialize<'de>,
     {
@@ -257,6 +250,56 @@ mod serialization {
     }
 }
 
+impl<K, V, Tag, CL> From<Set<(K, V), Tag, CL>> for Map<K, V, Tag, CL>
+where
+    K: Key + Ord,
+    V: Value + Hash + Eq + Ord,
+    Tag: TagT,
+    CL: CausalLength,
+{
+    fn from(s: Set<(K, V), Tag, CL>) -> Self {
+        let mut m = Self::new();
+        for item in s.register_iter() {
+            m.merge_register(item, Tag::default());
+        }
+        m
+    }
+}
+
+impl<K, V, Tag, CL> From<Map<K, V, Tag, CL>> for Set<(K, V), Tag, CL>
+where
+    K: Key + Ord,
+    V: Value + Hash + Eq + Ord,
+    Tag: TagT,
+    CL: CausalLength,
+{
+    fn from(m: Map<K, V, Tag, CL>) -> Self {
+        let mut s = Self::new();
+        for item in m.register_iter() {
+            s.merge_register(item, Tag::default());
+        }
+        s
+    }
+}
+
+impl<K, V, Tag, CL> From<Map<K, V, Tag, CL>> for HashMap<K, (V, Tag)>
+where
+    K: Key + Ord,
+    V: Value + Hash + Eq + Ord,
+    Tag: TagT,
+    CL: CausalLength,
+{
+    fn from(m: Map<K, V, Tag, CL>) -> Self {
+        let mut h = Self::new();
+        for item in m.register_iter() {
+            if let Some(((k, v), tag)) = item.get() {
+                h.insert(k.clone(), (v.clone(), tag));
+            }
+        }
+        h
+    }
+}
+
 #[cfg(feature = "serialization")]
 pub use serialization::*;
 use std::collections::hash_map::Entry;
@@ -264,10 +307,8 @@ use std::collections::hash_map::Entry;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quickcheck_macros::quickcheck;
     use rand::seq::SliceRandom;
-
-    #[cfg(feature = "serialization")]
-    use serde_json;
 
     #[test]
     fn test_add() {
@@ -323,7 +364,7 @@ mod tests {
         // check edges
         let values: Vec<(&str, bool, u32)> = cls.iter().collect();
         assert_eq!(values.len(), 1);
-        assert_eq!(values[0], (("bar", true, time_3)));
+        assert_eq!(values[0], ("bar", true, time_3));
     }
 
     #[test]
@@ -401,7 +442,7 @@ mod tests {
         // check edges
         let values: Vec<(&str, u32, u32)> = cls.iter().collect();
         assert_eq!(values.len(), 1);
-        assert_eq!(values[0], (("bar", 256, time_2)));
+        assert_eq!(values[0], ("bar", 256, time_2));
         // now clear old removes
         cls.retain(time_3);
         assert_eq!(cls.map.len(), 1);
@@ -516,5 +557,80 @@ mod tests {
             m2.merge_register(r, 0);
         }
         assert_eq!(m1, m2);
+    }
+
+    fn merge(mut acc: Map<u8, u8, u8, u8>, el: &Register<(u8, u8), u8, u8>) -> Map<u8, u8, u8, u8> {
+        acc.merge_register(el.clone(), 0);
+        acc
+    }
+
+    #[quickcheck]
+    fn test_merge_commutative(xs: Vec<Register<(u8, u8), u8, u8>>) -> bool {
+        let left: HashMap<u8, (u8, u8)> = xs.iter().fold(Map::default(), merge).into();
+        let right: HashMap<u8, (u8, u8)> = xs.iter().rfold(Map::default(), merge).into();
+        left == right
+    }
+
+    #[quickcheck]
+    fn is_merge_order_independent(xs: Vec<Register<(u8, u8), u8, u8>>) -> bool {
+        let mut copy = xs.clone();
+        copy.shuffle(&mut rand::thread_rng());
+        let left: HashMap<u8, (u8, u8)> = xs.iter().fold(Map::default(), merge).into();
+        let right: HashMap<u8, (u8, u8)> = copy.iter().rfold(Map::default(), merge).into();
+        left == right
+    }
+
+    mod simple_model {
+        use super::*;
+        use quickcheck::{Arbitrary, Gen};
+        #[derive(Clone, Debug)]
+        enum Op {
+            Insert(u8, u8),
+            Get(u8),
+            Delete(u8),
+        }
+
+        const KEY_SPACE: u8 = 20;
+
+        impl Arbitrary for Op {
+            fn arbitrary(g: &mut Gen) -> Op {
+                let k: u8 = u8::arbitrary(g) % KEY_SPACE;
+                let v: u8 = u8::arbitrary(g);
+                let n: u8 = u8::arbitrary(g) % 4;
+
+                match n {
+                    0 => Op::Insert(k, v),
+                    1 => Op::Delete(k),
+                    2 | 3 => Op::Get(k),
+                    _ => Op::Get(k),
+                }
+            }
+        }
+
+        #[quickcheck]
+        fn implementation_matches_model(ops: Vec<Op>) -> bool {
+            let mut implementation: Map<u8, u8, u8, u8> = Map::new();
+            let mut model = std::collections::HashMap::new();
+
+            for op in ops {
+                match op {
+                    Op::Insert(k, v) => {
+                        implementation.insert(k, v, 0);
+                        model.insert(k, v);
+                    }
+                    Op::Get(k) => {
+                        if implementation.get(&k).map(|i| i.0) != model.get(&k) {
+                            return false;
+                        }
+                    }
+                    Op::Delete(k) => {
+                        implementation.remove(k, 0);
+                        model.remove(&k);
+                    }
+                }
+            }
+
+            true
+        }
     }
 }

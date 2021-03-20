@@ -5,7 +5,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct SubRegister<Tag, CL>
 where
     Tag: TagT,
@@ -19,7 +19,7 @@ where
 ///
 /// Set implements the set described in the paper, with the addition of a tag. Set only uses the
 /// tag for garbage collection of old removed members.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Set<T, Tag, CL>
 where
     T: Key,
@@ -235,9 +235,8 @@ use std::collections::hash_map::Entry;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quickcheck_macros::quickcheck;
     use rand::seq::SliceRandom;
-    #[cfg(feature = "serialization")]
-    use serde_json;
 
     #[test]
     fn test_add() {
@@ -408,8 +407,8 @@ mod tests {
         cls.remove("bar", time_2);
         cls.add("bar", time_3);
 
-        let data = serde_json::to_string(&cls).unwrap_or("".to_owned());
-        let cls2: Set<&str, u32, u16> = serde_json::from_str(&data).unwrap();
+        let data = serde_json::to_vec(&cls).unwrap();
+        let cls2: Set<&str, u32, u16> = serde_json::from_slice(&data).unwrap();
         assert_eq!(cls.map, cls2.map);
     }
 
@@ -439,5 +438,76 @@ mod tests {
                 length: 999
             })
         );
+    }
+
+    fn merge(mut acc: Set<u8, u8, u8>, el: &Register<u8, u8, u8>) -> Set<u8, u8, u8> {
+        acc.merge_register(el.clone(), 0);
+        acc
+    }
+
+    #[quickcheck]
+    fn is_merge_commutative(xs: Vec<Register<u8, u8, u8>>) -> bool {
+        let left = xs.iter().fold(Set::default(), merge);
+        let right = xs.iter().rfold(Set::default(), merge);
+        left == right
+    }
+
+    #[quickcheck]
+    fn is_merge_order_independent(xs: Vec<Register<u8, u8, u8>>) -> bool {
+        let mut copy = xs.clone();
+        copy.shuffle(&mut rand::thread_rng());
+        let left = xs.iter().fold(Set::default(), merge);
+        let right = copy.iter().rfold(Set::default(), merge);
+        left == right
+    }
+
+    use quickcheck::{Arbitrary, Gen};
+    #[derive(Clone, Debug)]
+    enum Op {
+        Insert(u8),
+        Get(u8),
+        Delete(u8),
+    }
+
+    const KEY_SPACE: u8 = 20;
+
+    impl Arbitrary for Op {
+        fn arbitrary(g: &mut Gen) -> Op {
+            let k: u8 = u8::arbitrary(g) % KEY_SPACE;
+            let n: u8 = u8::arbitrary(g) % 4;
+
+            match n {
+                0 => Op::Insert(k),
+                1 => Op::Delete(k),
+                2 | 3 => Op::Get(k),
+                _ => Op::Get(k),
+            }
+        }
+    }
+
+    #[quickcheck]
+    fn implementation_matches_model(ops: Vec<Op>) -> bool {
+        let mut implementation: Set<u8, u8, u8> = Set::new();
+        let mut model = std::collections::HashSet::new();
+
+        for op in ops {
+            match op {
+                Op::Insert(k) => {
+                    implementation.add(k, 0);
+                    model.insert(k);
+                }
+                Op::Get(k) => {
+                    if implementation.get(&k).is_some() != model.get(&k).is_some() {
+                        return false;
+                    }
+                }
+                Op::Delete(k) => {
+                    implementation.remove(k, 0);
+                    model.remove(&k);
+                }
+            }
+        }
+
+        true
     }
 }

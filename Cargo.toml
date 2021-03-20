@@ -1,6 +1,6 @@
 [package]
 name = "causal-length"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Nathan Hawkins <utsl@utsl.org>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -18,3 +18,5 @@ num-integer = "0"
 [dev-dependencies]
 serde_json = "1"
 rand="0"
+quickcheck = "1"
+quickcheck_macros = "1"

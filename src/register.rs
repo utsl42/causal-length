@@ -9,7 +9,7 @@ use serde_derive::{Deserialize, Serialize};
 /// Register implements a single member for the set described in the paper, with the addition of a
 /// tag. Sort of acts like a CRDT Option type. Register doesn't directly use the tag, but it also
 /// acts as a delta for the other CRDT's in this crate.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct Register<T, Tag, CL>
 where
@@ -76,23 +76,64 @@ where
         }
     }
 
+    // Accessor for tag
+    pub fn item(&self) -> &T {
+        &self.item
+    }
+
+    // Accessor for tag
+    pub fn tag(&self) -> Tag {
+        self.tag
+    }
+
+    // Accessor for length
+    pub fn length(&self) -> CL {
+        self.length
+    }
+}
+
+impl<T, Tag, CL> Register<T, Tag, CL>
+where
+    T: Key + Ord,
+    Tag: TagT,
+    CL: CausalLength,
+{
     /// Merge two register values
     pub fn merge(&mut self, other: &Register<T, Tag, CL>) {
-        if other.length > self.length {
-            if other.length.is_odd() && other.tag > self.tag {
+        if other.length > self.length && other.length.is_odd() {
+            self.item = other.item.clone();
+            self.tag = other.tag;
+        }
+        if other.length == self.length {
+            if other.tag > self.tag {
+                self.item = other.item.clone();
+                self.tag = max(self.tag, other.tag);
+            } else if other.tag == self.tag && other.item > self.item {
                 self.item = other.item.clone();
             }
-            self.length = max(self.length, other.length);
-            self.tag = max(self.tag, other.tag);
         }
+        self.length = max(self.length, other.length);
+    }
+}
+
+#[cfg(test)]
+use quickcheck::{Arbitrary, Gen};
+#[cfg(test)]
+impl<T, Tag, CL> Arbitrary for Register<T, Tag, CL>
+where
+    T: Key + Arbitrary,
+    Tag: TagT + Arbitrary,
+    CL: CausalLength + Arbitrary,
+{
+    fn arbitrary(g: &mut Gen) -> Register<T, Tag, CL> {
+        Register::make(T::arbitrary(g), Tag::arbitrary(g), CL::arbitrary(g))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "serialization")]
-    use serde_json;
+    use quickcheck_macros::quickcheck;
 
     #[test]
     fn test_merge() {
@@ -115,7 +156,38 @@ mod tests {
     #[test]
     fn test_serialization() {
         let reg1: Register<&str, u32, u16> = Register::new("foo", 0);
-        let data = serde_json::to_string(&reg1).unwrap_or("".to_owned());
-        assert_eq!(data, r#"{"item":"foo","tag":0,"length":1}"#.to_owned());
+        let data = serde_json::to_string(&reg1).unwrap();
+        assert_eq!(&data, r#"{"item":"foo","tag":0,"length":1}"#);
+    }
+
+    fn merge(mut acc: Register<u8, u8, u8>, el: &Register<u8, u8, u8>) -> Register<u8, u8, u8> {
+        acc.merge(el);
+        acc
+    }
+
+    #[quickcheck]
+    fn is_merge_commutative(xs: Vec<Register<u8, u8, u8>>) -> bool {
+        let left = xs.iter().fold(Register::default(), merge);
+        let right = xs.iter().rfold(Register::default(), merge);
+        left.get() == right.get()
+    }
+
+    #[test]
+    fn test_fup() {
+        let xs = vec![
+            Register {
+                item: 255,
+                tag: 174,
+                length: 1,
+            },
+            Register {
+                item: 9,
+                tag: 162,
+                length: 176,
+            },
+        ];
+        let left = xs.iter().fold(Register::default(), merge);
+        let right = xs.iter().rfold(Register::default(), merge);
+        assert_eq!(left.get(), right.get());
     }
 }
