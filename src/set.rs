@@ -102,7 +102,7 @@ where
     }
 
     /// An iterator visiting all registers in arbitrary order.
-    pub fn register_iter(&self) -> impl Iterator<Item = Register<T, Tag, CL>> + '_ {
+    pub fn register_iter(&self) -> impl Iterator<Item = <Self as DeltaCrdt>::Delta> + '_ {
         self.map.iter().map(|(k, v)| Register {
             item: k.clone(),
             tag: v.tag,
@@ -113,7 +113,7 @@ where
     /// Merge a delta [Register] into a set.
     ///
     /// Remove registers with a tag value less than `min_tag` will be ignored.
-    pub fn merge_register(&mut self, delta: Register<T, Tag, CL>, min_tag: Tag) {
+    pub fn merge_register(&mut self, delta: <Self as DeltaCrdt>::Delta, min_tag: Tag) {
         if delta.length.is_even() && delta.tag < min_tag {
             // ignore excessively old remove records
             return;
@@ -148,6 +148,15 @@ where
         self.map
             .retain(|_k, SubRegister { tag, length }| length.is_odd() || min_tag < *tag);
     }
+}
+
+impl<T, Tag, CL> DeltaCrdt for Set<T, Tag, CL>
+where
+    T: Key,
+    Tag: TagT,
+    CL: CausalLength,
+{
+    type Delta = Register<T, Tag, CL>;
 }
 
 #[cfg(feature = "serialization")]

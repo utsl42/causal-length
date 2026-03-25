@@ -34,3 +34,8 @@ impl<T> Value for T where T: Clone + Eq {}
 /// Tag type used in the CRDTs
 pub trait TagT: Eq + Ord + Copy + Default {}
 impl<T> TagT for T where T: Eq + Ord + Copy + Default {}
+
+/// A CRDT type that replicates via delta registers.
+pub trait DeltaCrdt {
+    type Delta;
+}

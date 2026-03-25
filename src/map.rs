@@ -123,7 +123,7 @@ where
     }
 
     /// An iterator visiting all delta registers in arbitrary order.
-    pub fn register_iter(&self) -> impl Iterator<Item = Register<(K, V), Tag, CL>> + '_ {
+    pub fn register_iter(&self) -> impl Iterator<Item = <Self as DeltaCrdt>::Delta> + '_ {
         self.map
             .iter()
             .map(|(k, v)| Register::make((k.clone(), v.item.clone()), v.tag, v.length))
@@ -132,7 +132,7 @@ where
     /// Merge a delta [Register] into a map.
     ///
     /// Remove deltas with a tag value less than `min_tag` will be ignored.
-    pub fn merge_register(&mut self, delta: Register<(K, V), Tag, CL>, min_tag: Tag) {
+    pub fn merge_register(&mut self, delta: <Self as DeltaCrdt>::Delta, min_tag: Tag) {
         if delta.length.is_even() && delta.tag < min_tag {
             // ignore excessively old remove records
             return;
@@ -248,6 +248,16 @@ mod serialization {
             Ok(Map { map })
         }
     }
+}
+
+impl<K, V, Tag, CL> DeltaCrdt for Map<K, V, Tag, CL>
+where
+    K: Key + Ord,
+    V: Value + Hash + Eq + Ord,
+    Tag: TagT,
+    CL: CausalLength,
+{
+    type Delta = Register<(K, V), Tag, CL>;
 }
 
 impl<K, V, Tag, CL> From<Set<(K, V), Tag, CL>> for Map<K, V, Tag, CL>
