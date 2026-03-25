@@ -426,7 +426,7 @@ mod tests {
         }
 
         // now randomize the updates
-        v.shuffle(&mut rand::thread_rng());
+        v.shuffle(&mut rand::rng());
 
         for r in v {
             m.merge_register(r, 0);
@@ -455,7 +455,7 @@ mod tests {
     #[quickcheck]
     fn is_merge_order_independent(xs: Vec<Register<u8, u8, u8>>) -> bool {
         let mut copy = xs.clone();
-        copy.shuffle(&mut rand::thread_rng());
+        copy.shuffle(&mut rand::rng());
         let left = xs.iter().fold(Set::default(), merge);
         let right = copy.iter().rfold(Set::default(), merge);
         left == right

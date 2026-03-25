@@ -530,7 +530,7 @@ mod tests {
         }
 
         // now randomize the updates
-        v.shuffle(&mut rand::thread_rng());
+        v.shuffle(&mut rand::rng());
 
         for r in v {
             m1.merge_register(r, 0);
@@ -552,7 +552,7 @@ mod tests {
                 length: i as u16,
             });
         }
-        v.shuffle(&mut rand::thread_rng());
+        v.shuffle(&mut rand::rng());
         for r in v {
             m2.merge_register(r, 0);
         }
@@ -574,7 +574,7 @@ mod tests {
     #[quickcheck]
     fn is_merge_order_independent(xs: Vec<Register<(u8, u8), u8, u8>>) -> bool {
         let mut copy = xs.clone();
-        copy.shuffle(&mut rand::thread_rng());
+        copy.shuffle(&mut rand::rng());
         let left: HashMap<u8, (u8, u8)> = xs.iter().fold(Map::default(), merge).into();
         let right: HashMap<u8, (u8, u8)> = copy.iter().rfold(Map::default(), merge).into();
         left == right
